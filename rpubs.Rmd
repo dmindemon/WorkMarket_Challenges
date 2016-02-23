@@ -1,0 +1,90 @@
+---
+title: "WorkMarket Challenge"
+author: "Guangmin Shen"
+date: "February 22, 2016"
+output: html_document
+---
+
+### Friendly Competition
+Here’s a list of all open jobs for the City of New York. https://data.cityofnewyork.us/Business/NYC-Jobs/kpav-sd4t
+
+Determine:
+
+1. Who has the most openings?
+2. Which departments have the highest and the lowest paying positions (based on current job openings)?
+3. Which jobs do you think are the hardest to fill? (What makes you say that?)
+
+### Importing Data
+```{r, cache=TRUE}
+URL = "https://data.cityofnewyork.us/api/views/kpav-sd4t/rows.csv?accessType=DOWNLOAD"
+download.file(URL, destfile = "./data.csv", method="curl")
+data = read.csv('data.csv')
+names(data)
+```
+
+### 1. Who has the most openings?
+Based on numbers of agency appear in the data set, I sorted the agency list. The first agency in the sorted list is the one has the most openings. 
+```{r, cache=TRUE}
+sort(table(data$Agency), decreasing=T)[1]
+```
+
+### 2. Which departments have the highest and the lowest paying positions?
+Looking at the summary of Salary.Frequency column, I found there're three different metrics.
+```{r, cache=TRUE}
+summary(data$Salary.Frequency)
+```
+So, I analyzed the payment based on these three different metrics (Annual, Daily, Hourly).
+```{r, cache=TRUE}
+min = data$Agency[tapply(data$Salary.Range.From, data$Salary.Frequency, which.min)]
+max = data$Agency[tapply(data$Salary.Range.To, data$Salary.Frequency, which.max)]
+```
+Then, I built a table to show the result.
+```{r, cache=TRUE, warning=FALSE}
+col_name = c('Annual', 'Daily', 'Hourly')
+df_salary = as.data.frame(rbind(as.character(min), as.character(max)))
+names(df_salary) = col_name
+rownames(df_salary) = c('min', 'max')
+library("knitr")
+kable(df_salary)
+```
+
+### 3. Which jobs do you think are the hardest to fill?
+Check whether Job IDs appear more than once.
+```{r, cache=TRUE}
+nrow(data)
+length(unique(data$Job.ID))
+```
+Since number of rows of data is more than number of unique job id, there are some jobs posted more than once. The reason may be that they didn't find the ideal person for a job for a long time, so they posted the job again. The period between first posted time and last reposted time of a job can be a good indicator of difficulty of filling the job. Let's subset only reposted jobs as a new data frame for the further analysis.
+```{r, cache=TRUE}
+repost_ids = names(sort(table(data$Job.ID), decreasing=T)[sort(table(data$Job.ID), decreasing=T)>1])
+repost_ids = as.numeric(repost_ids)
+df_repost = subset(data, data$Job.ID %in% repost_ids)
+```
+And, parse characters into date data type.
+```{r, cache=TRUE, warning=FALSE}
+library(lubridate)
+df_repost$Posting.Date = mdy_hms(df_repost$Posting.Date)
+df_repost$Posting.Updated = mdy_hms(df_repost$Posting.Updated)
+```
+Create a function to calculate period between the 1st posting time and the last updating time.
+```{r, cache=TRUE}
+range = function(alist, blist, group){
+    min = as.Date.POSIXct(tapply(alist, group, min))
+    max = as.Date.POSIXct(tapply(blist, group, max))
+    result = max - min
+    result = sort(result, decreasing = T)
+}
+```
+Applye the function:
+```{r, cache=TRUE}
+r = range(df_repost$Posting.Date, df_repost$Posting.Updated, df_repost$Job.ID)
+```
+Here we got the result: IDs of Top 10 jobs that are hardest to fill.
+```{r, cache=TRUE, warning=FALSE}
+top_10 = as.data.frame(r[1:10])
+names(top_10) = 'Period: 1st posted ~ last posted'
+kable(top_10)
+```
+
+
+
